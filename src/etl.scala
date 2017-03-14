@@ -3,8 +3,9 @@
   */
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql.SparkSession
+import play.api.libs.json._
 
-object Etl extends App {
+object etl extends App {
 
   Logger.getLogger("org").setLevel(Level.WARN)
 
@@ -41,34 +42,75 @@ object Etl extends App {
     epochString.split(" ")(0).toDouble + epochString.split(" ")(1).toDouble
   }
 
-  //Declaring case classes for different types of data
-  case class VerbiageInput(date: Int, epoch: Double, server: String,
-                           model: String, io: String, prompt: String,
-                           channel: String, language: String)
+  def jsonParser(input: String): play.api.libs.json.JsValue = {
+    Json.parse(input)
+  }
 
-  case class VerbiageOutput(date: Int, epoch: Double, server: String,
-                           model: String, io: String, verb: String,
-                            success: String, outJSON: String)
+  //Declaring case classes for different types of data
+  case class Verbiage(date: Int, epoch: Double, server: String,
+                           model: String, io: String, prompt: String,
+                           channelMatch: String, languageOutput: String)
+
+  case class ConvEngineInput(date: Int, epoch: Double, server: String,
+                           model: String, io: String, utterance: String,
+                             toneEmotion: Option[String], toneScore: Option[Double],
+                             timeOfDay: Option[String], channel: Option[String] )
+
+  case class ConvEngineOutput(date: Int, epoch: Double, server: String,
+                             model: String, io: String, responseCode: String,
+                              response: String, intent: String, //entities: Option[String], /// will try to figure out parsing entities later
+                              confidenceScore: Double)
+
+  case class Dialog(date: Int, epoch: Double, server: String,
+                              model: String, seqNo: Int, utterance: Option[String], translation: Option[String],
+                              responseType: String, prompt: String)
 
   //Matching where input data should utilize case classes
 
-  def verbInOnly(line: Array[String]): Option[VerbiageInput] = line match {
-    case Array(a, b, x,c,"INPUT",e,f,g) => new Some(VerbiageInput(a.toInt,epochConverter(b),
+  def verb(line: Array[String]): Option[Verbiage] = line match {
+    case Array(a, b, x,c,"INPUT"|"OUTPUT",e,f,g) => new Some(Verbiage(a.toInt,epochConverter(b),
       x,c,"INPUT",e,f,g))
     case _ => None
   }
 
-  def verbOutOnly(line: Array[String]): Option[VerbiageOutput] = line match {
-     case Array(a, b, x,c,"OUTPUT",e,f,g) => new Some(VerbiageOutput(a.toInt,epochConverter(b),
-      x,c,"OUTPUT",e,f,g))
+  def ceInput(line: Array[String]): Option[ConvEngineInput] = line match {
+     case Array(a, b, x,c,"INPUT",e,f) => new Some(ConvEngineInput(a.toInt,epochConverter(b),
+      x,c,"INPUT",e,(jsonParser(f) \ "context" \ "toneEmotion").asOpt[String], (jsonParser(f) \ "context" \ "toneScore").asOpt[Double],
+       (jsonParser(f) \ "context" \ "timeOfDay").asOpt[String], (jsonParser(f) \ "context" \ "channel").asOpt[String]))
     case _ => None
   }
 
-  //creating final dataframes from caseclass homogenous datasets
+  def ceOutput(line: Array[String]): Option[ConvEngineOutput] = line match {
+    case Array(a, b, x,c,"OUTPUT",e,f,g) => new Some(ConvEngineOutput(a.toInt,epochConverter(b),
+      x,c,"OUTPUT",e,f,(jsonParser(g) \ "intents" \\ "intent").headOption.getOrElse("").toString, //(jsonParser(g) \ "entities").asOpt[String],
+      (jsonParser(g) \ "intents" \\ "confidence").headOption.getOrElse(0.0).toString.toDouble))
+    case _ => None
+  }
 
-  val VIOnly = data.map(verbInOnly).filter(_ != None).map(_.get)
+  def dialog(line: Array[String]): Option[Dialog] = line match {
+    case Array(a, b, x,c,y,e,f,g) => new Some(Dialog(a.toInt,epochConverter(b),
+      x,c,y.toInt, Option(e.split(':')(0)), Option(e.split(':')(1)) ,f,g))
+    case _ => None
+  }
 
-  val VIOnlyDF = spark.createDataFrame(VIOnly)
+
+  //creating final dataframes from case-class homogenous datasets
+
+  val verbOnly = data.map(verb).filter(_.isDefined).map(_.get)
+
+  val verbDF = spark.createDataFrame(verbOnly)
+
+  val ceInputOnly = data.map(ceInput).filter(_.isDefined).map(_.get)
+
+  val ceInputDF = spark.createDataFrame(ceInputOnly)
+
+  val ceOutputOnly = data.map(ceOutput).filter(_.isDefined).map(_.get)
+
+  val ceOutputDF = spark.createDataFrame(ceOutputOnly)
+
+  val dialogOnly = data.map(dialog).filter(_.isDefined).map(_.get)
+
+  val dialogDF = spark.createDataFrame(dialogOnly)
 
 
 
