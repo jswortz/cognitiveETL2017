@@ -1,0 +1,7 @@
+1290317923|0239012931|name=hi|price=10.11|priceData
+20170305|0.26548200 1488729489|linux2914|models\Voice\WestVoice|INPUT|prompt_getstopdate|SMS|en-us
+20170305|0.29626900 1488729489|linux2914|models\Voice\WestVoice|OUTPUT|VERBIAGE|true|[{"verbiage":"And when should I stop it at your current address?","voiceFile":""}]
+20170305|0.64687200 1488729469|linux2914|models\Voice\WestVoice|INPUT|prompt_ftgetnewaddress|SMS|en-us
+20170305|0.18755300 1488729470|linux2914|models\Voice\WestVoice|OUTPUT|VERBIAGE|false|[{"verbiage":"Sure, I can help you with that. What's the new address?","voiceFile":"getnewaddress.wav"}]
+20170305|0.12405200 1488729502|linux2914|models\Voice\WestVoice|INPUT|prompt_confirmdetails|SMS|en-us
+20170305|0.15534600 1488729502|linux2914|models\Voice\WestVoice|OUTPUT|VERBIAGE|true|[{"verbiage":"Alright, stopping service at","voiceFile":"confirmdetails1.wav"},{"verbiage":"1060 W Addison St","voiceFile":""},{"verbiage":"Chicago,","voiceFile":""},{"verbiage":"Illinois","voiceFile":""},{"verbiage":"60613","voiceFile":""},{"verbiage":"on","voiceFile":"confirmdetails3.wav"},{"verbiage":"03\/18\/2017","voiceFile":""},{"verbiage":"And I'll start it at","voiceFile":"confirmdetails5.wav"},{"verbiage":"16407 Aurora Street","voiceFile":""},{"verbiage":"Omaha,","voiceFile":""},{"verbiage":"Nebraska","voiceFile":""},{"verbiage":"68136","voiceFile":""},{"verbiage":"on","voiceFile":"confirmdetails7.wav"},{"verbiage":"03\/16\/2017","voiceFile":""},{"verbiage":"Does this look right?","voiceFile":"confirmdetails9.wav"}]
