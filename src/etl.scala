@@ -190,13 +190,13 @@ object etl extends App {
 
   //placeholder for writing parquet files to HDFS
 
-  verbDF.write.mode("append").parquet("PLACEHOLDER/context.parquet")
+  verbDF.write.mode("append").parquet("/incoming/pocData/verb/verb.parquet")
 
-  conversationDF.write.mode("append").parquet("PLACEHOLDER/conversation.parquet")
+  conversationDF.write.mode("append").parquet("/incoming/pocData/conv/conv.parquet")
 
-  dialogDF.write.mode("append").parquet("PLACEHOLDER/dialog.parquet")
+  dialogDF.write.mode("append").parquet("/incoming/pocData/dial/dial.parquet")
 
-  contextDF.write.mode("append").parquet("PLACEHOLDER/context.parquet")
+  contextDF.write.mode("append").parquet("/incoming/pocData/cont/cont.parquet")
 
 
 }
