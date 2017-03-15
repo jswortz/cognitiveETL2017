@@ -4,9 +4,9 @@
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql.SparkSession
 import play.api.libs.json._
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.scala.DefaultScalaModule
-import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
+
+import scala.util.parsing.json.JSON._
+
 
 object etl extends App {
 
@@ -31,7 +31,13 @@ object etl extends App {
 
   val data = sc.textFile(path).map(_.split('|'))
 
+  //**********************************************************
+  //**********************************************************
+  //**********************************************************
   //helper function to get the value in a "KEY=VALUE" string
+  //**********************************************************
+  //**********************************************************
+  //**********************************************************
 
   def getValOnly(input: String): String = {
     input.split("=") match {
@@ -48,36 +54,41 @@ object etl extends App {
   }
 
   def jsonParser(input: String): play.api.libs.json.JsValue = {
-    Json.parse(input)
+    if(parseFull(input).isDefined) Json.parse(input)
+    else Json.parse("{}")
   }
 
 
-  def entityMapper(parssed: play.api.libs.json.JsValue): Map[String, String] = Option(parssed) match {
-    case Some(x) => ((x \ "entities" \\ "entity").map(_.toString) zip
-      (x \ "entities" \\ "value").map(_.toString)).toMap
-    case _ => Map("" -> "")
+  def entityMapper(parssed: play.api.libs.json.JsValue): Option[Map[String, String]] = Option(parssed) match {
+    case Some(x) => Option(((x \ "entities" \\ "entity").map(_.toString) zip
+      (x \ "entities" \\ "value").map(_.toString)).toMap)
+    case _ => None
   }
 
-  def json2map(input: String): Map[String, Object] = {
-    val mapper = new ObjectMapper() with ScalaObjectMapper
-    mapper.registerModule(DefaultScalaModule)
-    mapper.readValue[Map[String, Object]](input).withDefaultValue("NA")
-  }
+//  def json2map(input: String): Map[String, Object] = {
+//    val mapper = new ObjectMapper() with ScalaObjectMapper
+//    mapper.registerModule(DefaultScalaModule)
+//    mapper.readValue[Map[String, Object]](input).withDefaultValue("NA")
+//  }
+//
 
+  //**********************************************************
+  //**********************************************************
+  //**********************************************************
   //Declaring case classes for different types of data
+  //**********************************************************
+  //**********************************************************
+  //**********************************************************
+
   case class Verbiage(callUUID: String, stepUUID: String, date: Option[Int], epoch: Option[Double], server: String,
                            model: String, io: String, prompt: String,
                            channelMatch: String, languageOutput: String)
 
-  case class ConvEngineInput(callUUID: String, stepUUID: String, date: Option[Int], epoch: Option[Double], server: String,
-                           model: String, io: String, utterance: String,
+  case class Conversation(callUUID: String, stepUUID: String, date: Option[Int], epoch: Option[Double], server: String,
+                             model: String, io: String, utterance: String, responseCode: String, response: String,
                              toneEmotion: Option[String], toneScore: Option[Double],
-                             timeOfDay: Option[String], channel: Option[String] )
-
-  case class ConvEngineOutput(callUUID: String, stepUUID: String, date: Option[Int], epoch: Option[Double], server: String,
-                             model: String, io: String, responseCode: String,
-                              response: String, intent: String, entities: Map[String,String], /// will try to figure out parsing entities later
-                              confidenceScore: Double)
+                             timeOfDay: Option[String], channel: Option[String], intent: String,
+                          entities: Option[Map[String,String]], confidenceScore: Double )
 
   case class Dialog(callUUID: String, stepUUID: String, date: Option[Int], epoch: Option[Double], server: String,
                               model: String, seqNo: Int, utterance: Option[String], translation: Option[String],
@@ -85,18 +96,21 @@ object etl extends App {
 
   case class Context(callUUID: String, stepUUID: String, date: Option[Int], epoch: Option[Double], server: String,
                     model: String, contextAction: String, io: String, inputStatus: String,
-                     inputMethod: String, custState: String, channel: String,
-                     timeOfDay: String, iiDigits: String, channelChange: String,
-                     toneEmotion: String, turnCount: String, nmCounter: String,
-                     custServAddress: String, toneScore: String, firstTurn: String/*,
-                     addressCount: Option[Int], firstName: String, isCell: String, maxFailNodeName: String,
-                     custZip: String, lastNode: String, maxFailAction: String, askSMS: String,
-                     custCity: String*/)
+                     inputMethod: String, custState: Option[String], channel: Option[String],
+                     timeOfDay: Option[String], iiDigits: Option[String], channelChange: Option[String],
+                     toneEmotion: Option[String], turnCount: Option[String], nmCounter: Option[String],
+                     custServAddress: Option[String], toneScore: Option[String], firstTurn: Option[String])
+
   // cant exceed 22 columns!
 
 
-
+  //**********************************************************
+  //**********************************************************
+  //**********************************************************
   //Matching where input data should utilize case classes
+  //**********************************************************
+  //**********************************************************
+  //**********************************************************
 
   def verb(line: Array[String]): Option[Verbiage] = line match {
     case Array("Voice", u1, u2 ,a, b, x,c,q,e,f,g) => new Some(Verbiage(u1, u2,
@@ -105,85 +119,84 @@ object etl extends App {
     case _ => None
   }
 
-  def ceInput(line: Array[String]): Option[ConvEngineInput] = line match {
-     case Array("Conversation", u1, u2, a, b, x,c,"INPUT",e,f) => new Some(ConvEngineInput(u1, u2,
-       Option(a.toInt),Option(epochConverter(b)),
-      x,c,"INPUT",e,(jsonParser(f) \ "context" \ "toneEmotion").asOpt[String], (jsonParser(f) \ "context" \ "toneScore").asOpt[Double],
-       (jsonParser(f) \ "context" \ "timeOfDay").asOpt[String], (jsonParser(f) \ "context" \ "channel").asOpt[String]))
-    case _ => None
-  }
-
-  def ceOutput(line: Array[String]): Option[ConvEngineOutput] = line match {
-    case Array("Conversation", u1, u2, a, b, x,c,"OUTPUT",e,f,g) => new Some(ConvEngineOutput(u1, u2,
+  def conversation(line: Array[String]): Option[Conversation] = line match {
+    case Array("Conversation", u1, u2, a, b, x,c,"OUTPUT",e,f,g) => new Some(Conversation(u1, u2,
       Option(a.toInt),Option(epochConverter(b)),
-      x,c,"OUTPUT",e,f,(jsonParser(g) \ "intents" \\ "intent").headOption.getOrElse("").toString, entityMapper(jsonParser(g)),
+      x,c,"OUTPUT",e,f,"",Option(""),Option(0.0),Option(""),Option(""),(jsonParser(g) \ "intents" \\ "intent")
+        .headOption.getOrElse("").toString, entityMapper(jsonParser(g)),
       (jsonParser(g) \ "intents" \\ "confidence").headOption.getOrElse(0.0).toString.toDouble))
+    case Array("Conversation", u1, u2, a, b, x,c,"INPUT",e,f) => new Some(Conversation(u1, u2,
+      Option(a.toInt),Option(epochConverter(b)),
+      x,c,"INPUT","","",e,(jsonParser(f) \ "context" \ "toneEmotion").asOpt[String],
+      (jsonParser(f) \ "context" \ "toneScore").asOpt[Double],
+      (jsonParser(f) \ "context" \ "timeOfDay").asOpt[String], (jsonParser(f) \ "context" \ "channel").asOpt[String]
+      ,"",None,0.0))
     case _ => None
   }
 
   def dialog(line: Array[String]): Option[Dialog] = line match {
-    case Array("Dialog", u1, u2, a, b, x,c,y,e,f,g) => new Some(Dialog(u1, u2, Option(a.toInt),Option(epochConverter(b)),
+    case Array("Dialog", u1, u2, a, b, x,c,y,e,f,g) => new Some(Dialog(u1, u2, Option(a.toInt),
+      Option(epochConverter(b)),
       x,c,y.toInt, if(e.split(':').length > 0) Option(e.split(':')(0)) else Option(""),
       if(e.split(':').length > 1) Option(e.split(':')(1)) else Option("") ,f,g))
     case _ => None
   }
 
-  def context(line: Array[String]): Option[Context] = line match {
-    case Array("ContextService", u1, u2, a, b, x, c, d, e, f) => new Some(Context(u1, u2, Option(a.toInt),Option(epochConverter(b)),
-      x,c, d, e, f, "", "", "", "", "", "", "", "", "", "", "", ""))
-    case Array("ContextService", u1, u2, a, b, x, c, d, e, f, g, h) => new Some(Context(u1, u2, Option(a.toInt),Option(epochConverter(b)),
-      x,c, d, e, f, g, json2map(h)("custState").toString, json2map(h)("channel").toString,
-      json2map(h)("timeOfDay").toString,json2map(h)("iiDigits").toString,json2map(h)("channelChange").toString,
-      json2map(h)("toneEmotion").toString,json2map(h)("turnCount").toString,json2map(h)("nmcounter").toString,
-      json2map(h)("custServiceAddress").toString,json2map(h)("toneScore").toString,json2map(h)("firstTurn").toString/*,
-      json2map(h)("addressCount").toString.toInt,json2map(h)("firstName").toString,json2map(h)("maxFailNodename").toString,
-      json2map(h)("custZip").toString,json2map(h)("lastnode").toString,json2map(h)("maxFailAction").toString,
-      json2map(h)("askSMS").toString, json2map(h)("custCity").toString*/))
+
+  def context2(line: Array[String]): Option[Context] = line match {
+    case Array("ContextService", u1, u2, a, b, x, c, d, e, f) => new Some(Context(u1, u2, Option(a.toInt),
+      Option(epochConverter(b)),
+      x,c, "", e,"","", (jsonParser(f) \ "custState").asOpt[String], (jsonParser(f) \ "channel").asOpt[String],
+      (jsonParser(f) \ "timeOfDay").asOpt[String],(jsonParser(f) \ "iiDigits").asOpt[String],(jsonParser(f) \ "channelChange").asOpt[String],
+      (jsonParser(f) \ "toneEmotion").asOpt[String],(jsonParser(f) \ "turnCount").asOpt[String],(jsonParser(f) \ "nmcounter").asOpt[String],
+      (jsonParser(f) \ "custServiceAddress").asOpt[String],(jsonParser(f) \ "toneScore").asOpt[String],(jsonParser(f) \ "firstTurn").asOpt[String]))
+    case Array("ContextService", u1, u2, a, b, x, c, d, e, f, g) => new Some(Context(u1, u2, Option(a.toInt),
+      Option(epochConverter(b)),
+      x,c, d, e, f, g, None, None, None, None, None, None, None, None, None, None, None))
+    case Array("ContextService", u1, u2, a, b, x, c, d, e, f, g, h) => new Some(Context(u1, u2, Option(a.toInt),
+      Option(epochConverter(b)),
+      x,c, d, e, f, g, (jsonParser(h) \ "custState").asOpt[String], (jsonParser(h) \ "channel").asOpt[String],
+      (jsonParser(h) \ "timeOfDay").asOpt[String],(jsonParser(h) \ "iiDigits").asOpt[String],(jsonParser(h) \ "channelChange").asOpt[String],
+      (jsonParser(h) \ "toneEmotion").asOpt[String],(jsonParser(h) \ "turnCount").asOpt[String],(jsonParser(h) \ "nmcounter").asOpt[String],
+      (jsonParser(h) \ "custServiceAddress").asOpt[String],(jsonParser(h) \ "toneScore").asOpt[String],(jsonParser(h) \ "firstTurn").asOpt[String]))
+    // can't handle more than 22 fields :(
     case _ => None
   }
 
-  /* Wow - this is an excellent module that parses all json into a map!!
-  import com.fasterxml.jackson.databind.ObjectMapper
-  import com.fasterxml.jackson.module.scala.DefaultScalaModule
-  import com.fasterxml.jackson.module.scala.experimental.ScalaObjectMapper
 
-  val mapper = new ObjectMapper() with ScalaObjectMapper
-  mapper.registerModule(DefaultScalaModule)
-  val obj = mapper.readValue[Map[String, Object]](jsonString)
-  */
-
+  //**********************************************************
+  //**********************************************************
+  //**********************************************************
   //creating final dataframes from case-class homogenous datasets
+  //**********************************************************
+  //**********************************************************
+  //**********************************************************
 
   val verbOnly = data.map(verb).filter(_.isDefined).map(_.get)
 
   val verbDF = spark.createDataFrame(verbOnly)
 
-  val ceInputOnly = data.map(ceInput).filter(_.isDefined).map(_.get)
+  val conversationOnly = data.map(conversation).filter(_.isDefined).map(_.get)
 
-  val ceInputDF = spark.createDataFrame(ceInputOnly)
-
-  val ceOutputOnly = data.map(ceOutput).filter(_.isDefined).map(_.get)
-
-  val ceOutputDF = spark.createDataFrame(ceOutputOnly)
+  val conversationDF = spark.createDataFrame(conversationOnly)
 
   val dialogOnly = data.map(dialog).filter(_.isDefined).map(_.get)
 
   val dialogDF = spark.createDataFrame(dialogOnly)
 
-  val contextOnly = data.map(context).filter(_.isDefined).map(_.get)
+  val contextOnly = data.map(context2).filter(_.isDefined).map(_.get)
 
   val contextDF = spark.createDataFrame(contextOnly)
 
   //placeholder for writing parquet files to HDFS
 
-  verbDF.write.mode("append").parquet("PLACEHOLDER")
+  verbDF.write.mode("append").parquet("PLACEHOLDER/context.parquet")
 
-  ceInputDF.write.mode("append").parquet("PLACEHOLDER")
+  conversationDF.write.mode("append").parquet("PLACEHOLDER/conversation.parquet")
 
-  ceOutputDF.write.mode("append").parquet("assets")
+  dialogDF.write.mode("append").parquet("PLACEHOLDER/dialog.parquet")
 
-  dialogDF.write.mode("append").parquet("PLACEHOLDER")
-
+  contextDF.write.mode("append").parquet("PLACEHOLDER/context.parquet")
 
 
 }
